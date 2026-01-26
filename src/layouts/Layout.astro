@@ -1,0 +1,36 @@
+---
+// src/layouts/Layout.astro
+const { title } = Astro.props;
+import '../styles/global.css'; // <--- This connects Tailwind to your site!
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title} | Midah School Bus</title>
+  </head>
+  <body class="bg-gray-50 text-gray-900 font-sans flex flex-col min-h-screen">
+    
+    <nav class="bg-yellow-400 p-4 shadow-md sticky top-0 z-50">
+      <div class="container mx-auto flex justify-between items-center">
+        <a href="/" class="font-bold text-xl text-black flex items-center gap-2">
+          🚌 Midah School Bus
+        </a>
+        <div class="space-x-2">
+          <a href="/routes" class="px-3 py-2 rounded hover:bg-yellow-300 text-sm font-medium">Routes</a>
+          <a href="/register" class="bg-black text-white px-4 py-2 rounded text-sm hover:bg-gray-800 transition">Register</a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="container mx-auto p-4 flex-grow">
+      <slot /> 
+    </main>
+
+    <footer class="bg-gray-900 text-gray-400 p-8 text-center mt-auto text-sm">
+      <p>&copy; 2026 Midah Transport Services.</p>
+      <p class="mt-2">Coverage: Cheras • Bandar Tun Razak • Permaisuri</p>
+    </footer>
+
+  </body>
+</html>

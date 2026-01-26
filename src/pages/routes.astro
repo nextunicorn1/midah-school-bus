@@ -1,0 +1,57 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+// EDIT THIS SECTION TO CHANGE PRICES/ZONES
+const zones = [
+  {
+    name: "Zone A: Cheras Core",
+    price: "RM 150",
+    desc: "Short distance travel within main Cheras area.",
+    stops: ["Taman Midah", "Taman Connaught", "HUKM", "Jalan Cheras"]
+  },
+  {
+    name: "Zone B: Bandar Tun Razak",
+    price: "RM 180",
+    desc: "Medium distance including hills and traffic zones.",
+    stops: ["Bandar Tun Razak", "Taman Mulia", "LRT Salak Selatan"]
+  },
+  {
+    name: "Zone C: Permaisuri & Damai",
+    price: "RM 220",
+    desc: "Long distance service with highway usage.",
+    stops: ["Bandar Sri Permaisuri", "Alam Damai", "Len Seng"]
+  }
+];
+---
+
+<Layout title="Routes & Pricing">
+  <div class="max-w-4xl mx-auto py-12 px-4">
+    <h1 class="text-4xl font-bold mb-8 text-center">Service Zones</h1>
+    
+    <div class="grid md:grid-cols-3 gap-6">
+      {zones.map((zone) => (
+        <div class="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition">
+          <div class="bg-yellow-400 p-4">
+            <h3 class="font-bold text-xl">{zone.name}</h3>
+          </div>
+          <div class="p-6">
+            <div class="text-3xl font-bold mb-2">{zone.price}<span class="text-sm font-normal text-gray-600">/mo</span></div>
+            <p class="text-gray-600 mb-4 text-sm">{zone.desc}</p>
+            <hr class="mb-4">
+            <h4 class="font-bold text-sm mb-2 uppercase text-gray-500">Coverage:</h4>
+            <ul class="space-y-1">
+              {zone.stops.map(stop => (
+                <li class="flex items-center text-sm">
+                  <span class="text-green-500 mr-2">✓</span> {stop}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div class="p-4 bg-gray-50 text-center">
+            <a href="/register" class="text-blue-600 font-bold hover:underline text-sm">Select this plan &rarr;</a>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</Layout>
