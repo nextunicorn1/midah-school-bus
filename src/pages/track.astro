@@ -23,26 +23,55 @@ import Layout from '../layouts/Layout.astro';
   <script is:inline src="https://cdn.socket.io/4.7.4/socket.io.min.js" crossorigin=""></script>
 
   <script is:inline>
-    // Default center (Kuala Lumpur)
+// Default center (Kuala Lumpur)
     const initialPos = [3.10146, 101.73411]; 
     const map = L.map('map').setView(initialPos, 15);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '© <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      attribution: '© OpenStreetMap'
     }).addTo(map);
 
     const marker = L.marker(initialPos).addTo(map);
     const popup = L.popup();
     marker.bindPopup(popup);
 
+    // --- NEW: FETCH LAST KNOWN LOCATION IMMEDIATELY ---
+    async function fetchLastLocation() {
+      try {
+        const res = await fetch('https://api.midahschoolbus.my/api/vehicles/locations');
+        const data = await res.json();
+        
+        if (data && data.length > 0) {
+          const van = data[0];
+          const startPos = [van.latitude, van.longitude];
+          
+          marker.setLatLng(startPos);
+          map.setView(startPos, 16); // instantly snap the map to the van
+          
+          const timeString = new Date(van.timestamp).toLocaleTimeString('en-MY');
+          popup.setContent(`
+            <div style="font-family: sans-serif;">
+              <strong>School Van</strong><br>
+              Speed: ${van.speed_kmh} km/h<br>
+              Last Seen: ${timeString}
+            </div>
+          `);
+        }
+      } catch (err) {
+        console.error("Could not fetch initial location", err);
+      }
+    }
+    
+    fetchLastLocation(); // Run it immediately on page load
+    // --------------------------------------------------
+
     const statusText = document.getElementById('status');
 
-    // ---------------------------------------------------------
     // THE MAGIC: Connect to your Oracle Backend WebSockets
-    // ---------------------------------------------------------
-    
     const socket = io('https://api.midahschoolbus.my');
+    
+    // ... keep the rest of your socket logic exactly the same!
 
     // When the connection succeeds
     socket.on('connect', () => {
@@ -77,5 +106,7 @@ import Layout from '../layouts/Layout.astro';
         </div>
       `);
     });
+
+    
   </script>
 </Layout>
