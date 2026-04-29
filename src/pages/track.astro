@@ -39,12 +39,13 @@ import Layout from '../layouts/Layout.astro';
     }).addTo(map);
 
     // --- NEW: CUSTOM VAN ICON ---
-    const vanIcon = L.icon({
-      iconUrl: 'https://img.icons8.com/color/96/000000/school-bus.png', // Cool Bus Icon!
-      iconSize: [48, 48], // Size of the icon
-      iconAnchor: [24, 24], // Center the icon over the GPS coordinate
-      popupAnchor: [0, -20] // Make the popup open slightly above the bus
-    });
+  const vanIcon = L.divIcon({
+    html: '<div style="font-size: 32px; line-height: 1;">🚌</div>',
+    className: 'transparent-icon', // removes default leaflet white box
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -16]
+  });
 
     // Attach the new icon to the marker
     const marker = L.marker(initialPos, { icon: vanIcon }).addTo(map);
