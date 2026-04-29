@@ -6,6 +6,12 @@ import Layout from '../layouts/Layout.astro';
 <Layout title="Live Van Tracker">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 
+<style is:inline>
+    .leaflet-marker-icon {
+      transition: transform 2s ease-out;
+    }
+  </style>
+
   <div class="max-w-6xl mx-auto px-4 py-8">
     <div class="mb-6">
       <h1 class="text-3xl font-extrabold text-gray-900">Live <span class="text-yellow-500">Van Tracker</span></h1>
@@ -32,7 +38,16 @@ import Layout from '../layouts/Layout.astro';
       attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    const marker = L.marker(initialPos).addTo(map);
+    // --- NEW: CUSTOM VAN ICON ---
+    const vanIcon = L.icon({
+      iconUrl: 'https://img.icons8.com/color/96/000000/school-bus.png', // Cool Bus Icon!
+      iconSize: [48, 48], // Size of the icon
+      iconAnchor: [24, 24], // Center the icon over the GPS coordinate
+      popupAnchor: [0, -20] // Make the popup open slightly above the bus
+    });
+
+    // Attach the new icon to the marker
+    const marker = L.marker(initialPos, { icon: vanIcon }).addTo(map);
     const popup = L.popup();
     marker.bindPopup(popup);
 
@@ -70,8 +85,6 @@ import Layout from '../layouts/Layout.astro';
 
     // THE MAGIC: Connect to your Oracle Backend WebSockets
     const socket = io('https://api.midahschoolbus.my');
-    
-    // ... keep the rest of your socket logic exactly the same!
 
     // When the connection succeeds
     socket.on('connect', () => {
