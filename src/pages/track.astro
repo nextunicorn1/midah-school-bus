@@ -42,8 +42,7 @@ import Layout from '../layouts/Layout.astro';
     // THE MAGIC: Connect to your Oracle Backend WebSockets
     // ---------------------------------------------------------
     
-    // Connect directly to your Oracle IP on port 3000
-    const socket = io('http://161.118.222.151:3000');
+    const socket = io('https://api.midahschoolbus.my');
 
     // When the connection succeeds
     socket.on('connect', () => {
