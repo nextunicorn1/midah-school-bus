@@ -32,7 +32,7 @@ import Layout from '../layouts/Layout.astro';
   <script is:inline src="https://cdn.socket.io/4.7.4/socket.io.min.js" crossorigin=""></script>
 
 <script is:inline>
-    // 1. Default Map Setup (KL)
+    // 1. Map Setup
     const initialPos = [3.10146, 101.73411]; 
     const map = L.map('map').setView(initialPos, 15);
 
@@ -51,34 +51,46 @@ import Layout from '../layouts/Layout.astro';
 
     const marker = L.marker(initialPos, { icon: vanIcon }).addTo(map);
 
-    // --- NEW: FETCH LAST KNOWN LOCATION ---
+    // 2. Fetch Last Known Location
     async function loadInitialLocation() {
       try {
-        // This calls your getVehicleLocations controller
-        const res = await fetch('https://api.midahschoolbus.my/api/vehicles/locations'); 
+        const res = await fetch('https://api.midahschoolbus.my/api/vehicles/locations');
         const data = await res.json();
         
         if (data && data.length > 0) {
           const van = data[0];
           const startPos = [van.latitude, van.longitude];
-          
-          // Snap map and marker instantly to the van
           marker.setLatLng(startPos);
           map.setView(startPos, 16); 
-          console.log("Loaded last known location:", startPos);
         }
       } catch (err) {
-        console.error("Could not fetch initial location", err);
+        console.error("Fetch error:", err);
       }
     }
+    
+    loadInitialLocation();
 
-    loadInitialLocation(); // Run it immediately
-    // --------------------------------------
-
-    const statusText = document.getElementById('status');
-
-    // 3. Connect to Live Feed
+    // 3. Live Socket Connection
+    const statusText = document.getElementById('status'); 
     const socket = io('https://api.midahschoolbus.my');
-    // ... rest of your socket code ...
+
+    // Turn text green on successful connection
+    socket.on('connect', () => {
+      statusText.textContent = "🟢 Live Connected";
+      statusText.className = "text-sm font-bold text-green-500 mt-2";
+      console.log("Connected to WebSocket!");
+    });
+
+    // Handle disconnects
+    socket.on('disconnect', () => {
+      statusText.textContent = "🔴 Connection Lost. Reconnecting...";
+      statusText.className = "text-sm font-bold text-red-500 mt-2";
+    });
+
+    // Move the bus when hardware pings
+    socket.on('vanLocationUpdate', (van) => {
+      const newPos = [van.latitude, van.longitude];
+      marker.setLatLng(newPos);
+    });
 </script>
 </Layout>
