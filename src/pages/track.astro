@@ -1,96 +1,138 @@
 ---
 // src/pages/track.astro
-import Layout from '../layouts/Layout.astro';
+import Layout from '../layouts/Layout.astro'; // Adjust this if your layout path is different
 ---
 
-<Layout title="Live Van Tracker">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-
-<style is:inline>
-    .leaflet-marker-icon {
-      /* 1 second, linear (constant speed, no slowing down at the end) */
-      transition: transform 1s linear !important; 
-      /* Tells the GPU to optimize this specific element for movement */
-      will-change: transform; 
-    }
-  </style>
-
-  <div class="max-w-6xl mx-auto px-4 py-8">
-    <div class="mb-6">
-      <h1 class="text-3xl font-extrabold text-gray-900">Live <span class="text-yellow-500">Van Tracker</span></h1>
-      <p class="text-gray-600">Watch the school van's location in real-time (Powered by OpenStreetMap & WebSockets).</p>
-      <p id="status" class="text-sm font-bold text-red-500 mt-2">🔴 Connecting to live server...</p>
-    </div>
-
-    <div class="w-full h-[70vh] rounded-2xl overflow-hidden shadow-lg border border-gray-200 z-0 relative">
-      <div id="map" class="w-full h-full bg-gray-100"></div>
-    </div>
-  </div>
-
-  <script is:inline src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  
-  <script is:inline src="https://cdn.socket.io/4.7.4/socket.io.min.js" crossorigin=""></script>
-
-<script is:inline>
-    // 1. Map Setup
-    const initialPos = [3.10146, 101.73411]; 
-    const map = L.map('map').setView(initialPos, 15);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
-
-    const vanIcon = L.divIcon({
-      html: '<div style="font-size: 32px; line-height: 1;">🚌</div>',
-      className: 'transparent-icon',
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
-      popupAnchor: [0, -16]
-    });
-
-    const marker = L.marker(initialPos, { icon: vanIcon }).addTo(map);
-
-    // 2. Fetch Last Known Location
-    async function loadInitialLocation() {
-      try {
-        const res = await fetch('https://api.midahschoolbus.my/api/vehicles/locations');
-        const data = await res.json();
+<Layout title="Live Van Tracker | Midah School Bus">
+    <main class="max-w-6xl mx-auto p-4 md:p-8">
+        <!-- Header Section -->
+        <h1 class="text-4xl font-extrabold text-gray-900 mb-2">
+            Live <span class="text-yellow-500">Van Tracker</span>
+        </h1>
+        <p class="text-gray-600 mb-2">
+            Watch the school van's location in real-time (Powered by Vector Tiles & WebSockets).
+        </p>
         
-        if (data && data.length > 0) {
-          const van = data[0];
-          const startPos = [van.latitude, van.longitude];
-          marker.setLatLng(startPos);
-          map.setView(startPos, 16); 
+        <!-- Connection Status Indicator -->
+        <p id="status" class="text-sm font-bold text-red-500 mb-6">
+            🔴 Connecting to live server...
+        </p>
+
+        <!-- Map Container -->
+        <div id="map" class="w-full h-[600px] rounded-2xl shadow-xl border border-gray-200 z-10"></div>
+    </main>
+
+    <!-- 1. MapLibre & Socket.io Libraries -->
+    <link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js" is:inline></script>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js" is:inline></script>
+
+    <script is:inline>
+        // ==========================================
+        // 1. YOUR API KEY & TILE PROVIDER
+        // ==========================================
+        // Replace this with your Protomaps or MapTiler key
+        const API_KEY = "PASTE_YOUR_API_KEY_HERE"; 
+        
+        // MapTiler free vector streets URL
+        const styleUrl = `https://api.maptiler.com/maps/streets-v2/style.json?key=${API_KEY}`;
+
+        // ==========================================
+        // 2. MAP SETUP (Note: MapLibre uses [Lng, Lat])
+        // ==========================================
+        const initialPos = [101.73411, 3.10146]; // KL Default
+        
+        const map = new maplibregl.Map({
+            container: 'map', 
+            style: styleUrl,
+            center: initialPos,
+            zoom: 15,
+            pitch: 45, // 3D tilt
+        });
+
+        // ==========================================
+        // 3. CUSTOM VAN ICON (With smooth CSS gliding)
+        // ==========================================
+        const el = document.createElement('div');
+        el.innerHTML = '🚌';
+        el.style.fontSize = '36px';
+        el.style.lineHeight = '1';
+        
+        // The magic glide CSS to prevent "jumping"
+        el.style.transition = 'transform 1s linear';
+        el.style.willChange = 'transform';
+
+        // Add marker to map
+        const marker = new maplibregl.Marker({ element: el })
+            .setLngLat(initialPos)
+            .addTo(map);
+
+        // ==========================================
+        // 4. FETCH LAST KNOWN LOCATION (CORS Secured)
+        // ==========================================
+        async function loadInitialLocation() {
+            try {
+                // Notice there are NO headers here. 
+                // Your Express server uses CORS to verify the origin natively.
+                const res = await fetch('https://api.midahschoolbus.my/api/vehicles/locations');
+                
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+                
+                const data = await res.json();
+                
+                if (data && data.length > 0) {
+                    const van = data[0];
+                    const startPos = [van.longitude, van.latitude]; // MapLibre format [Lng, Lat]
+                    
+                    marker.setLngLat(startPos);
+                    map.jumpTo({ center: startPos, zoom: 16 }); 
+                    console.log("Loaded last known location:", startPos);
+                }
+            } catch (err) {
+                console.error("Fetch error:", err);
+            }
         }
-      } catch (err) {
-        console.error("Fetch error:", err);
-      }
-    }
-    
-    loadInitialLocation();
+        
+        // Wait for the map's vector style to finish loading before moving the camera
+        map.on('load', () => {
+            loadInitialLocation();
+        });
 
-    // 3. Live Socket Connection
-    const statusText = document.getElementById('status'); 
-    const socket = io('https://api.midahschoolbus.my');
+        // ==========================================
+        // 5. LIVE SOCKET CONNECTION & FAILSAFE
+        // ==========================================
+        let isFirstPing = true;
+        const statusText = document.getElementById('status'); 
+        
+        // Connect to your Oracle Node.js server
+        const socket = io('https://api.midahschoolbus.my');
 
-    // Turn text green on successful connection
-    socket.on('connect', () => {
-      statusText.textContent = "🟢 Live Connected";
-      statusText.className = "text-sm font-bold text-green-500 mt-2";
-      console.log("Connected to WebSocket!");
-    });
+        socket.on('connect', () => {
+            if (statusText) {
+                statusText.textContent = "🟢 Live Connected";
+                statusText.className = "text-sm font-bold text-green-500 mb-6";
+            }
+        });
 
-    // Handle disconnects
-    socket.on('disconnect', () => {
-      statusText.textContent = "🔴 Connection Lost. Reconnecting...";
-      statusText.className = "text-sm font-bold text-red-500 mt-2";
-    });
+        socket.on('disconnect', () => {
+            if (statusText) {
+                statusText.textContent = "🔴 Connection Lost. Reconnecting...";
+                statusText.className = "text-sm font-bold text-red-500 mb-6";
+            }
+        });
 
-    // Move the bus when hardware pings
-    socket.on('vanLocationUpdate', (van) => {
-      const newPos = [van.latitude, van.longitude];
-      marker.setLatLng(newPos);
-    });
-</script>
+        socket.on('vanLocationUpdate', (van) => {
+            const newPos = [van.longitude, van.latitude]; // MapLibre format [Lng, Lat]
+            marker.setLngLat(newPos);
+            
+            // Failsafe: If the fetch failed earlier, snap to van on the first live ping
+            if (isFirstPing) {
+                map.flyTo({ center: newPos, zoom: 16 });
+                isFirstPing = false;
+                console.log("Map centered via WebSocket fallback");
+            }
+        });
+    </script>
 </Layout>
