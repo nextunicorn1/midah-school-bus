@@ -24,7 +24,6 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
 
     <link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
     <script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js" is:inline></script>
-    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js" is:inline></script>
 
     <!-- 2. Pass the key into the script using define:vars -->
     <script is:inline define:vars={{ API_KEY: mapKey }}>
@@ -139,35 +138,43 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             }
         }
         
+        // ==========================================
+        // 5. NATIVE SSE LIVE STREAM (No Socket.io!)
+        // ==========================================
         let isFirstPing = true;
         const statusText = document.getElementById('status'); 
-        const socket = io('https://api.midahschoolbus.my');
+        
+        // Open the native browser EventSource connection
+        const eventSource = new EventSource('https://api.midahschoolbus.my/api/vehicles/stream');
 
-        socket.on('connect', () => {
+        eventSource.onopen = () => {
             if (statusText) {
                 statusText.textContent = "🟢 Live Connected";
                 statusText.className = "text-sm font-bold text-green-500 mb-6";
             }
-        });
+        };
 
-        socket.on('disconnect', () => {
+        // If connection drops, EventSource will automatically try to reconnect!
+        eventSource.onerror = () => {
             if (statusText) {
                 statusText.textContent = "🔴 Connection Lost. Reconnecting...";
                 statusText.className = "text-sm font-bold text-red-500 mb-6";
             }
-        });
+        };
 
-        socket.on('vanLocationUpdate', (van) => {
+        // Listen for data pushed from the Oracle server
+        eventSource.onmessage = (event) => {
+            const van = JSON.parse(event.data);
             const newPos = [van.longitude, van.latitude]; 
             
-            // Glide smoothly to the new ping over 1 second (1000ms)
+            // Glide smoothly to the new ping
             animateVan(currentPos, newPos, 1000); 
-            currentPos = newPos; // Update our tracking variable
+            currentPos = newPos; 
             
             if (isFirstPing) {
                 map.flyTo({ center: newPos, zoom: 16 });
                 isFirstPing = false;
             }
-        });
+        };
     </script>
 </Layout>
