@@ -36,7 +36,6 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             style: styleUrl,
             center: currentPos,
             zoom: 15,
-            pitch: 45, 
         });
 
         // ==========================================
@@ -54,32 +53,18 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             return ctx.getImageData(0, 0, size, size);
         }
 
-        // ==========================================
-        // NEW: Professional Canvas Map Pin (The "Grab" Look)
-        // ==========================================
         function createBusPin() {
-            const size = 80;
+            const size = 64; // Made the canvas slightly smaller
             const canvas = document.createElement('canvas');
             canvas.width = size; canvas.height = size;
             const ctx = canvas.getContext('2d');
 
-            // 1. Draw thick white border (shadow/outline effect)
-            ctx.beginPath();
-            ctx.arc(size/2, size/2, 34, 0, Math.PI * 2);
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fill();
-
-            // 2. Draw the yellow Grab-style circle
-            ctx.beginPath();
-            ctx.arc(size/2, size/2, 28, 0, Math.PI * 2);
-            ctx.fillStyle = '#EAB308'; // Bold Yellow
-            ctx.fill();
-
-            // 3. Draw the Bus Emoji perfectly centered inside
-            ctx.font = '32px Arial';
+            // Draw ONLY the Bus Emoji perfectly centered
+            ctx.font = '48px Arial'; // Big, readable bus
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('🚌', size/2, size/2 + 2); 
+            // (+4 is a tiny optical adjustment to perfectly center most emojis)
+            ctx.fillText('🚌', size/2, size/2 + 4); 
 
             // Return the raw pixel data to MapLibre
             return ctx.getImageData(0, 0, size, size);
