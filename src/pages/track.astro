@@ -55,43 +55,59 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         }
 
         // ==========================================
-        // NEW: Professional SVG Map Pin (The "Grab" Look)
+        // NEW: Professional Canvas Map Pin (The "Grab" Look)
         // ==========================================
+        function createBusPin() {
+            const size = 80;
+            const canvas = document.createElement('canvas');
+            canvas.width = size; canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // 1. Draw thick white border (shadow/outline effect)
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, 34, 0, Math.PI * 2);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+
+            // 2. Draw the yellow Grab-style circle
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, 28, 0, Math.PI * 2);
+            ctx.fillStyle = '#EAB308'; // Bold Yellow
+            ctx.fill();
+
+            // 3. Draw the Bus Emoji perfectly centered inside
+            ctx.font = '32px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🚌', size/2, size/2 + 2); 
+
+            // Return the raw pixel data to MapLibre
+            return ctx.getImageData(0, 0, size, size);
+        }
+
         map.on('load', () => {
-            // Create a sharp, scalable SVG pin (Yellow circle, thick white border, bus inside)
-            const svgPin = `
-            <svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="40" cy="40" r="32" fill="#EAB308" stroke="#FFFFFF" stroke-width="6" />
-              <text x="40" y="44" font-size="32" text-anchor="middle" dominant-baseline="middle">🚌</text>
-            </svg>`;
-            
-            const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgPin);
+            // Load the generated canvas image into the map
+            map.addImage('bus-icon', createBusPin());
 
-            // Load the SVG into the map engine
-            map.loadImage(dataUrl, (error, image) => {
-                if (error) throw error;
-                map.addImage('bus-icon', image);
-
-                map.addSource('van-source', {
-                    type: 'geojson',
-                    data: { type: 'Point', coordinates: currentPos }
-                });
-
-                map.addLayer({
-                    id: 'van-layer',
-                    type: 'symbol',
-                    source: 'van-source',
-                    layout: {
-                        'icon-image': 'bus-icon',
-                        'icon-size': 0.7, // Adjust this to make the pin bigger/smaller
-                        'icon-pitch-alignment': 'viewport', // Stands upright facing the user!
-                        'icon-rotation-alignment': 'viewport',
-                        'icon-allow-overlap': true
-                    }
-                });
-
-                loadInitialLocation();
+            map.addSource('van-source', {
+                type: 'geojson',
+                data: { type: 'Point', coordinates: currentPos }
             });
+
+            map.addLayer({
+                id: 'van-layer',
+                type: 'symbol',
+                source: 'van-source',
+                layout: {
+                    'icon-image': 'bus-icon',
+                    'icon-size': 0.8, // Adjust this to make the whole pin bigger or smaller
+                    'icon-pitch-alignment': 'viewport', // Stands upright facing the user!
+                    'icon-rotation-alignment': 'viewport',
+                    'icon-allow-overlap': true
+                }
+            });
+
+            loadInitialLocation();
         });
 
         // ==========================================
