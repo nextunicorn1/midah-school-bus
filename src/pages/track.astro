@@ -54,31 +54,44 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             return ctx.getImageData(0, 0, size, size);
         }
 
+        // ==========================================
+        // NEW: Professional SVG Map Pin (The "Grab" Look)
+        // ==========================================
         map.on('load', () => {
-            // Add the icon to the map's internal memory
-            map.addImage('bus-icon', createBusIcon());
+            // Create a sharp, scalable SVG pin (Yellow circle, thick white border, bus inside)
+            const svgPin = `
+            <svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="40" cy="40" r="32" fill="#EAB308" stroke="#FFFFFF" stroke-width="6" />
+              <text x="40" y="44" font-size="32" text-anchor="middle" dominant-baseline="middle">🚌</text>
+            </svg>`;
+            
+            const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgPin);
 
-            // Create a native data source for the van
-            map.addSource('van-source', {
-                type: 'geojson',
-                data: { type: 'Point', coordinates: currentPos }
+            // Load the SVG into the map engine
+            map.loadImage(dataUrl, (error, image) => {
+                if (error) throw error;
+                map.addImage('bus-icon', image);
+
+                map.addSource('van-source', {
+                    type: 'geojson',
+                    data: { type: 'Point', coordinates: currentPos }
+                });
+
+                map.addLayer({
+                    id: 'van-layer',
+                    type: 'symbol',
+                    source: 'van-source',
+                    layout: {
+                        'icon-image': 'bus-icon',
+                        'icon-size': 0.7, // Adjust this to make the pin bigger/smaller
+                        'icon-pitch-alignment': 'viewport', // Stands upright facing the user!
+                        'icon-rotation-alignment': 'viewport',
+                        'icon-allow-overlap': true
+                    }
+                });
+
+                loadInitialLocation();
             });
-
-            // Add the native 3D layer (Notice the alignment settings!)
-            map.addLayer({
-                id: 'van-layer',
-                type: 'symbol',
-                source: 'van-source',
-                layout: {
-                    'icon-image': 'bus-icon',
-                    'icon-size': 1,
-                    'icon-pitch-alignment': 'map',    // Makes it lay flat on the 3D street!
-                    'icon-rotation-alignment': 'map', // Rotates with the map
-                    'icon-allow-overlap': true
-                }
-            });
-
-            loadInitialLocation();
         });
 
         // ==========================================
