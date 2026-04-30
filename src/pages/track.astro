@@ -28,55 +28,103 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
 
     <!-- 2. Pass the key into the script using define:vars -->
     <script is:inline define:vars={{ API_KEY: mapKey }}>
-        
-        // The API_KEY variable is automatically injected here by Astro!
         const styleUrl = `https://api.maptiler.com/maps/streets-v2/style.json?key=${API_KEY}`;
-
-        const initialPos = [101.73411, 3.10146]; 
+        let currentPos = [101.73411, 3.10146]; // Default KL
         
         const map = new maplibregl.Map({
             container: 'map', 
             style: styleUrl,
-            center: initialPos,
+            center: currentPos,
             zoom: 15,
             pitch: 45, 
         });
 
-        const el = document.createElement('div');
-        el.innerHTML = '🚌';
-        el.style.fontSize = '36px';
-        el.style.lineHeight = '1';
-        el.style.transition = 'transform 1s linear';
-        el.style.willChange = 'transform';
+        // ==========================================
+        // NEW: Draw Emoji inside WebGL for 3D integration
+        // ==========================================
+        function createBusIcon() {
+            const size = 64;
+            const canvas = document.createElement('canvas');
+            canvas.width = size; canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.font = '40px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🚌', size/2, size/2);
+            return ctx.getImageData(0, 0, size, size);
+        }
 
-        const marker = new maplibregl.Marker({ element: el })
-            .setLngLat(initialPos)
-            .addTo(map);
+        map.on('load', () => {
+            // Add the icon to the map's internal memory
+            map.addImage('bus-icon', createBusIcon());
+
+            // Create a native data source for the van
+            map.addSource('van-source', {
+                type: 'geojson',
+                data: { type: 'Point', coordinates: currentPos }
+            });
+
+            // Add the native 3D layer (Notice the alignment settings!)
+            map.addLayer({
+                id: 'van-layer',
+                type: 'symbol',
+                source: 'van-source',
+                layout: {
+                    'icon-image': 'bus-icon',
+                    'icon-size': 1,
+                    'icon-pitch-alignment': 'map',    // Makes it lay flat on the 3D street!
+                    'icon-rotation-alignment': 'map', // Rotates with the map
+                    'icon-allow-overlap': true
+                }
+            });
+
+            loadInitialLocation();
+        });
+
+        // ==========================================
+        // NEW: JavaScript Math Glide (Fixes panning bug)
+        // ==========================================
+        function animateVan(startPos, endPos, durationMs) {
+            let startTimestamp = null;
+            
+            function step(timestamp) {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / durationMs, 1);
+                
+                // Calculate the exact point between A and B
+                const currentLng = startPos[0] + (endPos[0] - startPos[0]) * progress;
+                const currentLat = startPos[1] + (endPos[1] - startPos[1]) * progress;
+                
+                // Update the native map source
+                map.getSource('van-source').setData({
+                    type: 'Point',
+                    coordinates: [currentLng, currentLat]
+                });
+                
+                if (progress < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        }
 
         async function loadInitialLocation() {
             try {
                 const res = await fetch('https://api.midahschoolbus.my/api/vehicles/locations');
                 if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-                
                 const data = await res.json();
                 
                 if (data && data.length > 0) {
                     const van = data[0];
-                    const startPos = [van.longitude, van.latitude]; 
+                    currentPos = [van.longitude, van.latitude];
                     
-                    marker.setLngLat(startPos);
-                    map.jumpTo({ center: startPos, zoom: 16 }); 
-                    console.log("Loaded last known location:", startPos);
+                    // Instantly snap to saved location
+                    map.getSource('van-source').setData({ type: 'Point', coordinates: currentPos });
+                    map.jumpTo({ center: currentPos, zoom: 16 }); 
                 }
             } catch (err) {
                 console.error("Fetch error:", err);
             }
         }
         
-        map.on('load', () => {
-            loadInitialLocation();
-        });
-
         let isFirstPing = true;
         const statusText = document.getElementById('status'); 
         const socket = io('https://api.midahschoolbus.my');
@@ -97,12 +145,14 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
 
         socket.on('vanLocationUpdate', (van) => {
             const newPos = [van.longitude, van.latitude]; 
-            marker.setLngLat(newPos);
+            
+            // Glide smoothly to the new ping over 1 second (1000ms)
+            animateVan(currentPos, newPos, 1000); 
+            currentPos = newPos; // Update our tracking variable
             
             if (isFirstPing) {
                 map.flyTo({ center: newPos, zoom: 16 });
                 isFirstPing = false;
-                console.log("Map centered via WebSocket fallback");
             }
         });
     </script>
