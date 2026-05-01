@@ -2,3 +2,5 @@ User-agent: facebookexternalhit
 Allow: /
 User-agent: Facebot
 Allow: /
+User-agent: meta-externalagent
+Allow: /
