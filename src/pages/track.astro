@@ -128,10 +128,10 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
                 const data = await res.json();
                 
                 if (data && data.length > 0) {
-                    const van = data[0];
-                    currentPos = [van.longitude, van.latitude];
+                    const vanData = data[0];
+                    // Unpack the minified array: [id, lng, lat, speed, time]
+                    currentPos = [vanData[1], vanData[2]]; 
                     
-                    // Instantly snap to saved location
                     map.getSource('van-source').setData({ type: 'Point', coordinates: currentPos });
                     map.jumpTo({ center: currentPos, zoom: 16 }); 
                 }
@@ -166,10 +166,11 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
 
         // Listen for data pushed from the Oracle server
         eventSource.onmessage = (event) => {
-            const van = JSON.parse(event.data);
-            const newPos = [van.longitude, van.latitude]; 
+            const vanData = JSON.parse(event.data);
             
-            // Glide smoothly to the new ping
+            // Unpack the minified array: [id, lng, lat, speed, time]
+            const newPos = [vanData[1], vanData[2]]; 
+            
             animateVan(currentPos, newPos, 1000); 
             currentPos = newPos; 
             
