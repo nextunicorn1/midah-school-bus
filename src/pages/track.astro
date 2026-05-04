@@ -40,19 +40,21 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         });
 
         // ==========================================
+        // NEW: Add the "Locate Me" Blue Dot
+        // ==========================================
+        const geolocate = new maplibregl.GeolocateControl({
+            positionOptions: {
+                enableHighAccuracy: true
+            },
+            trackUserLocation: true, // Moves the blue dot if the user is walking
+            showUserHeading: true    // Shows a little arrow pointing where their phone is facing
+        });
+        
+        map.addControl(geolocate, 'bottom-right'); // Puts the GPS button in the corner
+
+        // ==========================================
         // NEW: Draw Emoji inside WebGL for 3D integration
         // ==========================================
-        function createBusIcon() {
-            const size = 64;
-            const canvas = document.createElement('canvas');
-            canvas.width = size; canvas.height = size;
-            const ctx = canvas.getContext('2d');
-            ctx.font = '40px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('🚌', size/2, size/2);
-            return ctx.getImageData(0, 0, size, size);
-        }
 
         function createBusPin() {
             const size = 64; // Made the canvas slightly smaller
@@ -164,14 +166,22 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             }
         };
 
-        // Listen for data pushed from the Oracle server
+        let lastPingTime = performance.now(); // NEW: Track when the last ping arrived
+
         eventSource.onmessage = (event) => {
             const vanData = JSON.parse(event.data);
-            
-            // Unpack the minified array: [id, lng, lat, speed, time]
             const newPos = [vanData[1], vanData[2]]; 
             
-            animateVan(currentPos, newPos, 1000); 
+            // NEW: Calculate exactly how long it took for this ping to arrive
+            const now = performance.now();
+            let dynamicDuration = now - lastPingTime;
+            lastPingTime = now;
+
+            // Cap the duration between 1 second and 4 seconds to handle network drops
+            dynamicDuration = Math.max(1000, Math.min(dynamicDuration, 4000));
+            
+            // Glide smoothly using the exact network timing instead of a hardcoded 1000ms
+            animateVan(currentPos, newPos, dynamicDuration); 
             currentPos = newPos; 
             
             if (isFirstPing) {
