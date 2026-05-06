@@ -56,6 +56,22 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         map.addControl(geolocate, 'bottom-right'); // Puts the GPS button in the corner
 
         // ==========================================
+        // ADVANCED MATH: Calculate Bearing (Rotation)
+        // ==========================================
+        function getBearing(start, end) {
+            const startLat = start[1] * Math.PI / 180;
+            const startLng = start[0] * Math.PI / 180;
+            const endLat = end[1] * Math.PI / 180;
+            const endLng = end[0] * Math.PI / 180;
+
+            const dLng = endLng - startLng;
+            const y = Math.sin(dLng) * Math.cos(endLat);
+            const x = Math.cos(startLat) * Math.sin(endLat) - Math.sin(startLat) * Math.cos(endLat) * Math.cos(dLng);
+            const bearing = Math.atan2(y, x) * 180 / Math.PI;
+            return (bearing + 360) % 360;
+        }
+
+        // ==========================================
         // NEW: Draw Emoji inside WebGL for 3D integration
         // ==========================================
 
@@ -102,28 +118,46 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         });
 
         // ==========================================
-        // NEW: JavaScript Math Glide (Fixes panning bug)
+        // UPGRADED: Conflict-Free Animation
         // ==========================================
+        let animationId = null;
+        let actualDisplayPos = currentPos; // Tracks exactly where the bus is mid-glide
+
         function animateVan(startPos, endPos, durationMs) {
+            // 1. KILL the old animation if a new ping arrives early! (Fixes jitter)
+            if (animationId) cancelAnimationFrame(animationId);
+
+            // 2. Calculate the direction the van is heading
+            const targetBearing = getBearing(startPos, endPos);
+            
+            // 3. Rotate the bus icon to face the road (The "Grab" effect)
+            if (map.getLayer('van-layer')) {
+                map.setLayoutProperty('van-layer', 'icon-rotate', targetBearing);
+            }
+
             let startTimestamp = null;
             
             function step(timestamp) {
                 if (!startTimestamp) startTimestamp = timestamp;
                 const progress = Math.min((timestamp - startTimestamp) / durationMs, 1);
                 
-                // Calculate the exact point between A and B
+                // Calculate the exact pixel point
                 const currentLng = startPos[0] + (endPos[0] - startPos[0]) * progress;
                 const currentLat = startPos[1] + (endPos[1] - startPos[1]) * progress;
                 
-                // Update the native map source
+                actualDisplayPos = [currentLng, currentLat]; 
+                
+                // Update the map
                 map.getSource('van-source').setData({
                     type: 'Point',
-                    coordinates: [currentLng, currentLat]
+                    coordinates: actualDisplayPos
                 });
                 
-                if (progress < 1) requestAnimationFrame(step);
+                if (progress < 1) {
+                    animationId = requestAnimationFrame(step);
+                }
             }
-            requestAnimationFrame(step);
+            animationId = requestAnimationFrame(step);
         }
 
         async function loadInitialLocation() {
@@ -134,8 +168,8 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
                 
                 if (data && data.length > 0) {
                     const vanData = data[0];
-                    // Unpack the minified array: [id, lng, lat, speed, time]
                     currentPos = [vanData[1], vanData[2]]; 
+                    actualDisplayPos = currentPos; // <-- ADD THIS LINE!
                     
                     map.getSource('van-source').setData({ type: 'Point', coordinates: currentPos });
                     map.jumpTo({ center: currentPos, zoom: 16 }); 
@@ -169,22 +203,27 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             }
         };
 
-        let lastPingTime = performance.now(); // NEW: Track when the last ping arrived
+        // ==========================================
+        // UPGRADED: SSE Listener
+        // ==========================================
+        let lastPingTime = performance.now();
 
         eventSource.onmessage = (event) => {
             const vanData = JSON.parse(event.data);
             const newPos = [vanData[1], vanData[2]]; 
             
-            // NEW: Calculate exactly how long it took for this ping to arrive
             const now = performance.now();
             let dynamicDuration = now - lastPingTime;
             lastPingTime = now;
 
-            // Cap the duration between 1 second and 4 seconds to handle network drops
-            dynamicDuration = Math.max(1000, Math.min(dynamicDuration, 4000));
+            // Cap the network delay between 2 and 4 seconds
+            dynamicDuration = Math.max(2000, Math.min(dynamicDuration, 4000));
             
-            // Glide smoothly using the exact network timing instead of a hardcoded 1000ms
-            animateVan(currentPos, newPos, dynamicDuration); 
+            // CRITICAL: Start the new glide from exactly where the bus is *right now*, 
+            // not where it was supposed to be. Fixes teleporting.
+            const startPosToUse = actualDisplayPos || currentPos;
+            
+            animateVan(startPosToUse, newPos, dynamicDuration); 
             currentPos = newPos; 
             
             if (isFirstPing) {
