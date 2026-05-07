@@ -72,49 +72,48 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         }
 
         // ==========================================
-        // NEW: Draw Emoji inside WebGL for 3D integration
+        // NEW: Professional Top-Down Van Graphic
         // ==========================================
-
-        function createBusPin() {
-            const size = 64; // Made the canvas slightly smaller
-            const canvas = document.createElement('canvas');
-            canvas.width = size; canvas.height = size;
-            const ctx = canvas.getContext('2d');
-
-            // Draw ONLY the Bus Emoji perfectly centered
-            ctx.font = '48px Arial'; // Big, readable bus
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            // (+4 is a tiny optical adjustment to perfectly center most emojis)
-            ctx.fillText('🚌', size/2, size/2 + 4); 
-
-            // Return the raw pixel data to MapLibre
-            return ctx.getImageData(0, 0, size, size);
-        }
-
         map.on('load', () => {
-            // Load the generated canvas image into the map
-            map.addImage('bus-icon', createBusPin());
+            // A pure SVG top-down yellow school van!
+            const vanSvg = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+              <rect x="14" y="10" width="36" height="48" rx="8" fill="rgba(0,0,0,0.3)" />
+              <rect x="16" y="8" width="32" height="48" rx="8" fill="#FACC15" />
+              <rect x="20" y="16" width="24" height="6" rx="1" fill="#1E293B" />
+              <rect x="22" y="48" width="20" height="4" rx="1" fill="#1E293B" />
+              <rect x="18" y="8" width="6" height="3" rx="1" fill="#FEF08A" />
+              <rect x="40" y="8" width="6" height="3" rx="1" fill="#FEF08A" />
+              <rect x="18" y="54" width="8" height="2" rx="1" fill="#EF4444" />
+              <rect x="38" y="54" width="8" height="2" rx="1" fill="#EF4444" />
+            </svg>`;
 
-            map.addSource('van-source', {
-                type: 'geojson',
-                data: { type: 'Point', coordinates: currentPos }
+            const imgUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(vanSvg);
+
+            map.loadImage(imgUrl, (error, image) => {
+                if (error) throw error;
+                map.addImage('bus-icon', image);
+
+                map.addSource('van-source', {
+                    type: 'geojson',
+                    data: { type: 'Point', coordinates: currentPos }
+                });
+
+                map.addLayer({
+                    id: 'van-layer',
+                    type: 'symbol',
+                    source: 'van-source',
+                    layout: {
+                        'icon-image': 'bus-icon',
+                        'icon-size': 0.8, 
+                        'icon-pitch-alignment': 'map',    // Glues it flat to the map
+                        'icon-rotation-alignment': 'map', // Rotates correctly on the ground
+                        'icon-allow-overlap': true
+                    }
+                });
+
+                loadInitialLocation();
             });
-
-            map.addLayer({
-                id: 'van-layer',
-                type: 'symbol',
-                source: 'van-source',
-                layout: {
-                    'icon-image': 'bus-icon',
-                    'icon-size': 0.8, // Adjust this to make the whole pin bigger or smaller
-                    'icon-pitch-alignment': 'viewport', // Stands upright facing the user!
-                    'icon-rotation-alignment': 'viewport',
-                    'icon-allow-overlap': true
-                }
-            });
-
-            loadInitialLocation();
         });
 
         // ==========================================
