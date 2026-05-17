@@ -18,7 +18,7 @@ const TENANT_ID = 1;
         </div>
 
         <!-- Controls bar -->
-        <div class="bg-white rounded-2xl shadow border border-gray-200 p-4 mb-6 flex flex-wrap gap-3 items-end">
+        <div class="bg-white rounded-2xl shadow border border-gray-200 p-4 mb-4 flex flex-wrap gap-3 items-end">
             <div>
                 <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Date</label>
                 <input
@@ -40,6 +40,45 @@ const TENANT_ID = 1;
                 🔄 Load Existing
             </button>
             <span id="manifest-status" class="text-sm text-gray-400 ml-auto self-center"></span>
+        </div>
+
+        <!-- Filter / Sort bar -->
+        <div class="bg-white rounded-2xl shadow border border-gray-200 p-4 mb-6 flex flex-wrap gap-3 items-end">
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">School</label>
+                <select id="filter-school" class="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 min-w-[160px]">
+                    <option value="">All Schools</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Van / Route</label>
+                <select id="filter-van" class="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 min-w-[140px]">
+                    <option value="">All Vans</option>
+                    <option value="PMW2268">PMW2268</option>
+                    <option value="WA6935C">WA6935C</option>
+                    <option value="VL1709">VL1709</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Sort by End Time</label>
+                <select id="sort-time" class="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400">
+                    <option value="">Default</option>
+                    <option value="asc">Earliest First</option>
+                    <option value="desc">Latest First</option>
+                </select>
+            </div>
+            <button
+                id="btn-apply-filters"
+                class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-5 rounded-xl shadow-sm transition text-sm"
+            >
+                Apply
+            </button>
+            <button
+                id="btn-clear-filters"
+                class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-500 font-bold py-2 px-4 rounded-xl shadow-sm transition text-sm"
+            >
+                Clear
+            </button>
         </div>
 
         <!-- Morning Section -->
@@ -94,6 +133,15 @@ const TENANT_ID = 1;
     <script is:inline define:vars={{ API_BASE, TENANT_ID }}>
 
         // ==========================================
+        // State
+        // ==========================================
+
+        // Raw data cache: { morning: [], afternoon: [] }
+        let _manifestData = { morning: [], afternoon: [] };
+        // Transfer maps: { morning: Map<studentId, transferInfo>, afternoon: Map<...> }
+        let _transferData = { morning: new Map(), afternoon: new Map() };
+
+        // ==========================================
         // Helpers
         // ==========================================
         function today() {
@@ -102,12 +150,17 @@ const TENANT_ID = 1;
 
         function formatTime(timeStr) {
             if (!timeStr) return '—';
-            // timeStr is "HH:MM:SS" from postgres TIME
             const [h, m] = timeStr.split(':');
             const hour = parseInt(h);
             const ampm = hour >= 12 ? 'PM' : 'AM';
-            const display = ((hour % 12) || 12) + ':' + m + ' ' + ampm;
-            return display;
+            return ((hour % 12) || 12) + ':' + m + ' ' + ampm;
+        }
+
+        // Parse "HH:MM:SS" or "HH:MM" to total minutes for sorting
+        function timeToMinutes(timeStr) {
+            if (!timeStr) return Infinity;
+            const parts = timeStr.split(':');
+            return parseInt(parts[0]) * 60 + parseInt(parts[1]);
         }
 
         function statusBadge(row) {
@@ -125,13 +178,101 @@ const TENANT_ID = 1;
             return `<span class="inline-block ${cls} text-xs font-bold px-2 py-0.5 rounded-full">${label}</span>`;
         }
 
-        function formatPoint(wkt) {
-            // wkt: "POINT(101.73 3.09)" — show as lat/lng or just the text
-            if (!wkt) return '—';
-            const match = wkt.match(/POINT\(([^ ]+) ([^)]+)\)/);
-            if (match) return `${parseFloat(match[2]).toFixed(5)}, ${parseFloat(match[1]).toFixed(5)}`;
-            return wkt;
+        // ==========================================
+        // Transfer badge
+        // ==========================================
+        function transferBadge(tripType, studentId) {
+            const info = _transferData[tripType].get(studentId);
+            if (!info) return '';
+            const point = info.transfer_point_name ?? '?';
+            const plate = info.outbound_van_plate ?? '?';
+            return `<span class="inline-flex items-center gap-1 bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded-full" title="Transfer: ${point} → ${plate}">
+                🔀 ${point} · ${plate}
+            </span>`;
         }
+
+        // ==========================================
+        // Inline end-time editor
+        // ==========================================
+        function endTimeDisplay(row) {
+            const timeVal = row.scheduled_end_time ? row.scheduled_end_time.slice(0, 5) : ''; // "HH:MM"
+            const display = formatTime(row.scheduled_end_time);
+            return `<span
+                class="end-time-display cursor-pointer hover:underline hover:text-yellow-600 transition text-sm font-medium"
+                data-row-id="${row.id}"
+                data-current="${timeVal}"
+                title="Click to edit end time"
+                onclick="openEndTimeEditor(this)"
+            >${display}</span>`;
+        }
+
+        window.openEndTimeEditor = function(spanEl) {
+            // Prevent double-open
+            if (spanEl.parentElement.querySelector('input[type="time"]')) return;
+
+            const rowId = spanEl.dataset.rowId;
+            const current = spanEl.dataset.current; // "HH:MM"
+
+            const input = document.createElement('input');
+            input.type = 'time';
+            input.value = current;
+            input.className = 'border border-yellow-400 rounded px-1 py-0.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 w-28';
+
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = '✓';
+            saveBtn.className = 'text-xs bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-2 py-0.5 rounded transition ml-1';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '✕';
+            cancelBtn.className = 'text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold px-2 py-0.5 rounded transition ml-1';
+
+            // Hide the span and insert controls after it
+            spanEl.classList.add('hidden');
+            spanEl.after(cancelBtn);
+            spanEl.after(saveBtn);
+            spanEl.after(input);
+
+            function cleanup() {
+                input.remove();
+                saveBtn.remove();
+                cancelBtn.remove();
+                spanEl.classList.remove('hidden');
+            }
+
+            cancelBtn.addEventListener('click', cleanup);
+
+            saveBtn.addEventListener('click', async () => {
+                const newTime = input.value; // "HH:MM"
+                if (!newTime) { cleanup(); return; }
+                saveBtn.textContent = '…';
+                saveBtn.disabled = true;
+                try {
+                    await apiFetch(`/${rowId}/end-time`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ scheduled_end_time: newTime }),
+                    });
+                    // Update cached data
+                    for (const type of ['morning', 'afternoon']) {
+                        const r = _manifestData[type].find(r => r.id == rowId);
+                        if (r) r.scheduled_end_time = newTime + ':00';
+                    }
+                    spanEl.dataset.current = newTime;
+                    spanEl.textContent = formatTime(newTime + ':00');
+                    cleanup();
+                } catch (err) {
+                    alert('Failed to save end time: ' + err.message);
+                    saveBtn.textContent = '✓';
+                    saveBtn.disabled = false;
+                }
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveBtn.click();
+                if (e.key === 'Escape') cleanup();
+            });
+
+            input.focus();
+        };
 
         // ==========================================
         // Row renderer
@@ -139,12 +280,15 @@ const TENANT_ID = 1;
         function renderRow(row, tripType) {
             const isAbsent = row.is_absent;
             const rowBg = isAbsent ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200';
-            const point = tripType === 'morning'
-                ? `<span class="text-gray-400 text-xs">📍 Pickup:</span> <span class="text-sm font-medium">${formatPoint(row.pickup_point)}</span>`
-                : `<span class="text-gray-400 text-xs">📍 Dropoff:</span> <span class="text-sm font-medium">${formatPoint(row.dropoff_point)}</span>`;
 
-            const endTime = tripType === 'afternoon'
-                ? `<span class="text-gray-400 text-xs ml-3">🕐 End:</span> <span class="text-sm font-medium">${formatTime(row.scheduled_end_time)}</span>`
+            // Feature 5: stop names instead of coordinates
+            const stopLabel = tripType === 'morning'
+                ? `<span class="text-gray-400 text-xs">📍 Pickup:</span> <span class="text-sm font-medium">${row.pickup_stop_name ?? '—'}</span>`
+                : `<span class="text-gray-400 text-xs">📍 Dropoff:</span> <span class="text-sm font-medium">${row.dropoff_stop_name ?? '—'}</span>`;
+
+            // Feature 4: inline end-time editor (afternoon only; morning has no meaningful end time)
+            const endTimeHtml = tripType === 'afternoon'
+                ? `<span class="text-gray-400 text-xs ml-3">🕐 End:</span> ${endTimeDisplay(row)}`
                 : '';
 
             const notes = row.driver_notes
@@ -158,6 +302,9 @@ const TENANT_ID = 1;
             const absentReason = isAbsent && row.absence_reason
                 ? `<div class="text-xs text-red-500 mt-0.5">Reason: ${row.absence_reason}</div>`
                 : '';
+
+            // Feature 6: transfer badge
+            const transfer = transferBadge(tripType, row.student_id ?? row.id);
 
             const absentBtn = isAbsent
                 ? `<button
@@ -180,10 +327,11 @@ const TENANT_ID = 1;
                             <span class="font-bold text-gray-900">${row.student_name}</span>
                             ${statusBadge(row)}
                             ${row.grade_level ? `<span class="text-xs text-gray-400">${row.grade_level}</span>` : ''}
+                            ${transfer}
                         </div>
                         <div class="mt-0.5">
-                            ${point}
-                            ${endTime}
+                            ${stopLabel}
+                            ${endTimeHtml}
                         </div>
                         <div class="mt-0.5">
                             <span class="text-gray-400 text-xs">🏫</span> <span class="text-sm text-gray-600">${row.school_name ?? '—'}</span>
@@ -202,19 +350,71 @@ const TENANT_ID = 1;
         }
 
         // ==========================================
-        // Render a manifest section
+        // Filter + sort helpers
+        // ==========================================
+        function getFilters() {
+            return {
+                school: document.getElementById('filter-school').value,
+                van:    document.getElementById('filter-van').value,
+                sort:   document.getElementById('sort-time').value,
+            };
+        }
+
+        function applyFiltersAndSort(rows) {
+            const { school, van, sort } = getFilters();
+            let result = rows.slice();
+
+            if (school) result = result.filter(r => (r.school_name ?? '') === school);
+            if (van)    result = result.filter(r => (r.vehicle_plate ?? '') === van);
+
+            if (sort === 'asc') {
+                result.sort((a, b) => timeToMinutes(a.scheduled_end_time) - timeToMinutes(b.scheduled_end_time));
+            } else if (sort === 'desc') {
+                result.sort((a, b) => timeToMinutes(b.scheduled_end_time) - timeToMinutes(a.scheduled_end_time));
+            }
+
+            return result;
+        }
+
+        // Populate the school dropdown from loaded data
+        function populateSchoolDropdown() {
+            const select = document.getElementById('filter-school');
+            const allRows = [..._manifestData.morning, ..._manifestData.afternoon];
+            const schools = [...new Set(allRows.map(r => r.school_name).filter(Boolean))].sort();
+            // Preserve current selection
+            const current = select.value;
+            select.innerHTML = '<option value="">All Schools</option>';
+            schools.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s;
+                opt.textContent = s;
+                if (s === current) opt.selected = true;
+                select.appendChild(opt);
+            });
+        }
+
+        // ==========================================
+        // Render a manifest section (with filter/sort applied)
         // ==========================================
         function renderSection(containerId, countId, rows, tripType) {
             const container = document.getElementById(containerId);
             const countBadge = document.getElementById(countId);
-            if (!rows.length) {
-                container.innerHTML = `<div class="text-gray-400 text-sm italic">No students on this manifest.</div>`;
-                countBadge.textContent = '';
+            const filtered = applyFiltersAndSort(rows);
+
+            if (!filtered.length) {
+                const isEmpty = !rows.length;
+                container.innerHTML = `<div class="text-gray-400 text-sm italic">${isEmpty ? 'No students on this manifest.' : 'No students match the current filters.'}</div>`;
+                countBadge.textContent = rows.length ? `0 / ${rows.length} shown` : '';
                 return;
             }
-            const present = rows.filter(r => !r.is_absent).length;
-            countBadge.textContent = `${present} / ${rows.length} present`;
-            container.innerHTML = rows.map(r => renderRow(r, tripType)).join('');
+            const present = filtered.filter(r => !r.is_absent).length;
+            countBadge.textContent = `${present} / ${filtered.length} present`;
+            container.innerHTML = filtered.map(r => renderRow(r, tripType)).join('');
+        }
+
+        function rerender() {
+            renderSection('morning-manifest',   'morning-count',   _manifestData.morning,   'morning');
+            renderSection('afternoon-manifest', 'afternoon-count', _manifestData.afternoon, 'afternoon');
         }
 
         // ==========================================
@@ -254,6 +454,31 @@ const TENANT_ID = 1;
             return { morning, afternoon };
         }
 
+        // Feature 6: fetch transfers for both trip types and populate _transferData
+        async function loadTransfers(date) {
+            try {
+                const [morning, afternoon] = await Promise.all([
+                    apiFetch(`/transfers?date=${date}&trip_type=morning&tenant_id=${TENANT_ID}`),
+                    apiFetch(`/transfers?date=${date}&trip_type=afternoon&tenant_id=${TENANT_ID}`),
+                ]);
+                _transferData.morning   = new Map((morning   ?? []).map(t => [t.student_id, t]));
+                _transferData.afternoon = new Map((afternoon ?? []).map(t => [t.student_id, t]));
+            } catch (_) {
+                // Transfers are non-critical; silently ignore if endpoint not yet live
+                _transferData = { morning: new Map(), afternoon: new Map() };
+            }
+        }
+
+        // ==========================================
+        // Store data + render
+        // ==========================================
+        function storeAndRender(morning, afternoon) {
+            _manifestData.morning   = morning   ?? [];
+            _manifestData.afternoon = afternoon ?? [];
+            populateSchoolDropdown();
+            rerender();
+        }
+
         // ==========================================
         // Absence modal state
         // ==========================================
@@ -282,14 +507,19 @@ const TENANT_ID = 1;
                     method: 'PATCH',
                     body: JSON.stringify({ reason }),
                 });
+                // Update cached data
+                for (const type of ['morning', 'afternoon']) {
+                    const r = _manifestData[type].find(r => r.id == _pendingAbsenceId);
+                    if (r) { r.is_absent = true; r.absence_reason = reason; }
+                }
                 // Update row in-place
                 const row = document.getElementById(`row-${_pendingAbsenceId}`);
                 if (row) {
                     row.classList.remove('bg-white', 'border-gray-200');
                     row.classList.add('bg-red-50', 'border-red-200');
-                    const badge = row.querySelector('span[class*="rounded-full"]');
+                    const badge = row.querySelector('span[class*="rounded-full"]:not([class*="purple"])');
                     if (badge) badge.outerHTML = `<span class="inline-block bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">Absent</span>`;
-                    const btn = row.querySelector('button');
+                    const btn = row.querySelector('button:last-of-type');
                     if (btn) {
                         btn.textContent = '✓ Mark Present';
                         btn.className = 'text-xs bg-green-100 hover:bg-green-200 text-green-700 font-bold px-3 py-1 rounded-lg transition';
@@ -314,19 +544,22 @@ const TENANT_ID = 1;
         window.markPresent = async function(rowId, btn) {
             try {
                 await apiFetch(`/${rowId}/present`, { method: 'PATCH' });
+                // Update cached data
+                for (const type of ['morning', 'afternoon']) {
+                    const r = _manifestData[type].find(r => r.id == rowId);
+                    if (r) { r.is_absent = false; r.absence_reason = null; }
+                }
                 const row = document.getElementById(`row-${rowId}`);
                 if (row) {
                     row.classList.remove('bg-red-50', 'border-red-200');
                     row.classList.add('bg-white', 'border-gray-200');
-                    const badge = row.querySelector('span[class*="rounded-full"]');
+                    const badge = row.querySelector('span[class*="rounded-full"]:not([class*="purple"])');
                     if (badge) badge.outerHTML = `<span class="inline-block bg-gray-100 text-gray-600 text-xs font-bold px-2 py-0.5 rounded-full">Scheduled</span>`;
                     btn.textContent = '✕ Mark Absent';
                     btn.className = 'text-xs bg-red-100 hover:bg-red-200 text-red-700 font-bold px-3 py-1 rounded-lg transition';
-                    // restore onclick — need student name, re-fetch from DOM
                     const nameEl = row.querySelector('.font-bold.text-gray-900');
                     const name = nameEl ? nameEl.textContent : '';
                     btn.setAttribute('onclick', `openAbsenceModal(${rowId}, '${name.replace(/'/g, "\\'")}', this)`);
-                    // remove reason line if present
                     const reasonEl = row.querySelector('.text-red-500.text-xs');
                     if (reasonEl) reasonEl.remove();
                 }
@@ -359,7 +592,19 @@ const TENANT_ID = 1;
         }
 
         // ==========================================
-        // Wire up buttons
+        // Filter bar wiring
+        // ==========================================
+        document.getElementById('btn-apply-filters').addEventListener('click', rerender);
+
+        document.getElementById('btn-clear-filters').addEventListener('click', () => {
+            document.getElementById('filter-school').value = '';
+            document.getElementById('filter-van').value    = '';
+            document.getElementById('sort-time').value     = '';
+            rerender();
+        });
+
+        // ==========================================
+        // Wire up generate / load buttons
         // ==========================================
         document.getElementById('manifest-date').value = today();
 
@@ -368,11 +613,12 @@ const TENANT_ID = 1;
             if (!date) return alert('Please select a date.');
             setStatus('⚡ Generating…', 'loading');
             try {
-                const { morning, afternoon } = await generateManifest(date);
-                // generate returns { generated, rows } — load fresh from view for full names
-                const data = await loadManifest(date);
-                renderSection('morning-manifest',   'morning-count',   data.morning,   'morning');
-                renderSection('afternoon-manifest', 'afternoon-count', data.afternoon, 'afternoon');
+                await generateManifest(date);
+                const [data] = await Promise.all([
+                    loadManifest(date),
+                    loadTransfers(date),
+                ]);
+                storeAndRender(data.morning, data.afternoon);
                 setStatus(`✓ Generated for ${date}`, 'ok');
             } catch (err) {
                 setStatus('✗ ' + err.message, 'error');
@@ -384,9 +630,11 @@ const TENANT_ID = 1;
             if (!date) return alert('Please select a date.');
             setStatus('Loading…', 'loading');
             try {
-                const { morning, afternoon } = await loadManifest(date);
-                renderSection('morning-manifest',   'morning-count',   morning,   'morning');
-                renderSection('afternoon-manifest', 'afternoon-count', afternoon, 'afternoon');
+                const [data] = await Promise.all([
+                    loadManifest(date),
+                    loadTransfers(date),
+                ]);
+                storeAndRender(data.morning, data.afternoon);
                 setStatus(`✓ Loaded for ${date}`, 'ok');
             } catch (err) {
                 setStatus('✗ ' + err.message, 'error');
@@ -397,9 +645,12 @@ const TENANT_ID = 1;
         (async () => {
             setStatus('Loading today…', 'loading');
             try {
-                const { morning, afternoon } = await loadManifest(today());
-                renderSection('morning-manifest',   'morning-count',   morning,   'morning');
-                renderSection('afternoon-manifest', 'afternoon-count', afternoon, 'afternoon');
+                const date = today();
+                const [data] = await Promise.all([
+                    loadManifest(date),
+                    loadTransfers(date),
+                ]);
+                storeAndRender(data.morning, data.afternoon);
                 setStatus(`✓ Loaded for today`, 'ok');
             } catch (err) {
                 setStatus('', 'info');
