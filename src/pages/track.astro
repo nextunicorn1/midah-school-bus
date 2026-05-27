@@ -19,6 +19,15 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             🔴 Connecting to live server...
         </p>
 
+        <div class="mb-4 max-w-xs">
+            <label for="van-select" class="block text-sm font-semibold text-gray-700 mb-2">
+                🚚 Filter by Vehicle:
+            </label>
+            <select id="van-select" class="w-full p-3 bg-white border border-gray-300 rounded-xl shadow-sm font-medium focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 cursor-pointer">
+                <option value="all">✨ Show All Vans</option>
+            </select>
+        </div>
+
         <div id="map" class="w-full h-[600px] rounded-2xl shadow-xl border border-gray-200 z-10"></div>
     </main>
 
@@ -131,6 +140,17 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
                 }
             });
 
+            // ==========================================
+            // NEW: Add this van to the Dropdown Menu
+            // ==========================================
+            const vanSelect = document.getElementById('van-select');
+            if (vanSelect) {
+                const option = document.createElement('option');
+                option.value = vanId;
+                option.textContent = `Van ID: ${vanId}`;
+                vanSelect.appendChild(option);
+            }
+
             fleetTracking[vanId] = {
                 currentPos: initialPos,
                 actualDisplayPos: initialPos,
@@ -205,6 +225,39 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             map.addImage('bus-icon', createBusPin());
             loadInitialLocation();
         });
+
+        // ==========================================
+        // NEW: Dropdown Filter Event Handler
+        // ==========================================
+        const vanSelect = document.getElementById('van-select');
+        
+        if (vanSelect) {
+            vanSelect.addEventListener('change', (event) => {
+                const selectedValue = String(event.target.value);
+
+                // Loop through all tracked vans and toggle visibility
+                Object.keys(fleetTracking).forEach(vanId => {
+                    const layerId = `van-layer-${vanId}`;
+                    
+                    if (map.getLayer(layerId)) {
+                        if (selectedValue === 'all' || selectedValue === String(vanId)) {
+                            map.setLayoutProperty(layerId, 'visibility', 'visible');
+                        } else {
+                            map.setLayoutProperty(layerId, 'visibility', 'none');
+                        }
+                    }
+                });
+
+                // Smoothly focus camera on the explicitly chosen van
+                if (selectedValue !== 'all' && fleetTracking[selectedValue]) {
+                    map.flyTo({
+                        center: fleetTracking[selectedValue].actualDisplayPos,
+                        zoom: 17,
+                        essential: true
+                    });
+                }
+            });
+        }
 
         // ==========================================
         // NATIVE SSE LIVE STREAM (Fleet Aware)
