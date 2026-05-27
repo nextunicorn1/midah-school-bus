@@ -25,15 +25,14 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
     <link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
     <script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js" is:inline></script>
 
-    <!-- 2. Pass the key into the script using define:vars -->
     <script is:inline define:vars={{ API_KEY: mapKey }}>
         const styleUrl = `https://api.maptiler.com/maps/streets-v2/style.json?key=${API_KEY}`;
-        let currentPos = [101.73411, 3.10146]; // Default KL
+        let defaultPos = [101.73411, 3.10146]; // Default KL
         
         const map = new maplibregl.Map({
             container: 'map', 
             style: styleUrl,
-            center: currentPos,
+            center: defaultPos,
             zoom: 15,
             maxZoom: 18,
             minZoom: 10,
@@ -43,17 +42,17 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         });
 
         // ==========================================
-        // NEW: Add the "Locate Me" Blue Dot
+        // Add the "Locate Me" Blue Dot
         // ==========================================
         const geolocate = new maplibregl.GeolocateControl({
             positionOptions: {
                 enableHighAccuracy: true
             },
-            trackUserLocation: true, // Moves the blue dot if the user is walking
-            showUserHeading: true    // Shows a little arrow pointing where their phone is facing
+            trackUserLocation: true,
+            showUserHeading: true    
         });
         
-        map.addControl(geolocate, 'bottom-right'); // Puts the GPS button in the corner
+        map.addControl(geolocate, 'bottom-right');
 
         // ==========================================
         // ADVANCED MATH: Calculate Bearing (Rotation)
@@ -72,7 +71,7 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         }
 
         // ==========================================
-        // NEW: Bulletproof Canvas Top-Down Van
+        // Bulletproof Canvas Top-Down Van
         // ==========================================
         function createBusPin() {
             const size = 64;
@@ -80,25 +79,20 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             canvas.width = size; canvas.height = size;
             const ctx = canvas.getContext('2d');
 
-            // 1. Subtle Drop Shadow
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.fillRect(14, 10, 36, 48);
 
-            // 2. Yellow Van Body
             ctx.fillStyle = '#FACC15';
             ctx.fillRect(16, 8, 32, 48);
 
-            // 3. Front Windshield & Rear Window
             ctx.fillStyle = '#1E293B';
             ctx.fillRect(20, 16, 24, 6);
             ctx.fillRect(22, 48, 20, 4);
 
-            // 4. Yellow Headlights
             ctx.fillStyle = '#FEF08A';
             ctx.fillRect(18, 8, 6, 3);
             ctx.fillRect(40, 8, 6, 3);
 
-            // 5. Red Taillights
             ctx.fillStyle = '#EF4444';
             ctx.fillRect(18, 53, 8, 3);
             ctx.fillRect(38, 53, 8, 3);
@@ -106,19 +100,28 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             return ctx.getImageData(0, 0, size, size);
         }
 
-        map.on('load', () => {
-            // Load the generated canvas synchronously (Zero browser blocking!)
-            map.addImage('bus-icon', createBusPin());
+        // ==========================================
+        // FLEET TRACKING ENGINE (Supports Unlimited Vans)
+        // ==========================================
+        const fleetTracking = {}; 
+        let isFirstPing = true;
 
-            map.addSource('van-source', {
+        // Dynamically creates data sources and layers per vehicle ID
+        function ensureVanLayerExists(vanId, initialPos) {
+            const sourceId = `van-source-${vanId}`;
+            const layerId = `van-layer-${vanId}`;
+
+            if (map.getSource(sourceId)) return; 
+
+            map.addSource(sourceId, {
                 type: 'geojson',
-                data: { type: 'Point', coordinates: currentPos }
+                data: { type: 'Point', coordinates: initialPos }
             });
 
             map.addLayer({
-                id: 'van-layer',
+                id: layerId,
                 type: 'symbol',
-                source: 'van-source',
+                source: sourceId,
                 layout: {
                     'icon-image': 'bus-icon',
                     'icon-size': 0.8, 
@@ -128,25 +131,26 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
                 }
             });
 
-            loadInitialLocation();
-        });
+            fleetTracking[vanId] = {
+                currentPos: initialPos,
+                actualDisplayPos: initialPos,
+                animationId: null,
+                lastPingTime: performance.now()
+            };
+        }
 
-        // ==========================================
-        // UPGRADED: Conflict-Free Animation
-        // ==========================================
-        let animationId = null;
-        let actualDisplayPos = currentPos; // Tracks exactly where the bus is mid-glide
+        function animateFleetVan(vanId, startPos, endPos, durationMs) {
+            const van = fleetTracking[vanId];
+            if (!van) return;
 
-        function animateVan(startPos, endPos, durationMs) {
-            // 1. KILL the old animation if a new ping arrives early! (Fixes jitter)
-            if (animationId) cancelAnimationFrame(animationId);
+            if (van.animationId) cancelAnimationFrame(van.animationId);
 
-            // 2. Calculate the direction the van is heading
             const targetBearing = getBearing(startPos, endPos);
+            const layerId = `van-layer-${vanId}`;
+            const sourceId = `van-source-${vanId}`;
             
-            // 3. Rotate the bus icon to face the road (The "Grab" effect)
-            if (map.getLayer('van-layer')) {
-                map.setLayoutProperty('van-layer', 'icon-rotate', targetBearing);
+            if (map.getLayer(layerId)) {
+                map.setLayoutProperty(layerId, 'icon-rotate', targetBearing);
             }
 
             let startTimestamp = null;
@@ -155,51 +159,57 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
                 if (!startTimestamp) startTimestamp = timestamp;
                 const progress = Math.min((timestamp - startTimestamp) / durationMs, 1);
                 
-                // Calculate the exact pixel point
                 const currentLng = startPos[0] + (endPos[0] - startPos[0]) * progress;
                 const currentLat = startPos[1] + (endPos[1] - startPos[1]) * progress;
                 
-                actualDisplayPos = [currentLng, currentLat]; 
+                van.actualDisplayPos = [currentLng, currentLat]; 
                 
-                // Update the map
-                map.getSource('van-source').setData({
-                    type: 'Point',
-                    coordinates: actualDisplayPos
-                });
+                if (map.getSource(sourceId)) {
+                    map.getSource(sourceId).setData({
+                        type: 'Point',
+                        coordinates: van.actualDisplayPos
+                    });
+                }
                 
                 if (progress < 1) {
-                    animationId = requestAnimationFrame(step);
+                    van.animationId = requestAnimationFrame(step);
                 }
             }
-            animationId = requestAnimationFrame(step);
+            van.animationId = requestAnimationFrame(step);
         }
 
         async function loadInitialLocation() {
             try {
                 const res = await fetch('https://api.midahschoolbus.my/api/vehicles/locations');
                 if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-                const data = await res.json();
+                const fleet = await res.json();
                 
-                if (data && data.length > 0) {
-                    const vanData = data[0];
-                    currentPos = [vanData[1], vanData[2]]; 
-                    actualDisplayPos = currentPos; // <-- ADD THIS LINE!
+                fleet.forEach((vanData, index) => {
+                    const vanId = vanData[0];
+                    const pos = [vanData[1], vanData[2]];
                     
-                    map.getSource('van-source').setData({ type: 'Point', coordinates: currentPos });
-                    map.jumpTo({ center: currentPos, zoom: 16 }); 
-                }
+                    ensureVanLayerExists(vanId, pos);
+
+                    // Frame the map around the first active van discovered
+                    if (index === 0 && isFirstPing) {
+                        map.jumpTo({ center: pos, zoom: 16 });
+                        isFirstPing = false;
+                    }
+                });
             } catch (err) {
                 console.error("Fetch error:", err);
             }
         }
         
+        map.on('load', () => {
+            map.addImage('bus-icon', createBusPin());
+            loadInitialLocation();
+        });
+
         // ==========================================
-        // 5. NATIVE SSE LIVE STREAM (No Socket.io!)
+        // NATIVE SSE LIVE STREAM (Fleet Aware)
         // ==========================================
-        let isFirstPing = true;
         const statusText = document.getElementById('status'); 
-        
-        // Open the native browser EventSource connection
         const eventSource = new EventSource('https://api.midahschoolbus.my/api/vehicles/stream');
 
         eventSource.onopen = () => {
@@ -209,7 +219,6 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             }
         };
 
-        // If connection drops, EventSource will automatically try to reconnect!
         eventSource.onerror = () => {
             if (statusText) {
                 statusText.textContent = "🔴 Connection Lost. Reconnecting...";
@@ -217,33 +226,25 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             }
         };
 
-        // ==========================================
-        // UPGRADED: SSE Listener
-        // ==========================================
-        let lastPingTime = performance.now();
-
         eventSource.onmessage = (event) => {
             const vanData = JSON.parse(event.data);
+            const vanId = vanData[0];
             const newPos = [vanData[1], vanData[2]]; 
-            
-            const now = performance.now();
-            let dynamicDuration = now - lastPingTime;
-            lastPingTime = now;
 
-            // Cap the network delay between 2 and 4 seconds
+            // Handle spontaneous tracking if a vehicle boots up mid-stream
+            ensureVanLayerExists(vanId, newPos);
+
+            const van = fleetTracking[vanId];
+            const now = performance.now();
+            let dynamicDuration = now - van.lastPingTime;
+            van.lastPingTime = now;
+
             dynamicDuration = Math.max(2000, Math.min(dynamicDuration, 4000));
             
-            // CRITICAL: Start the new glide from exactly where the bus is *right now*, 
-            // not where it was supposed to be. Fixes teleporting.
-            const startPosToUse = actualDisplayPos || currentPos;
+            const startPosToUse = van.actualDisplayPos || van.currentPos;
             
-            animateVan(startPosToUse, newPos, dynamicDuration); 
-            currentPos = newPos; 
-            
-            if (isFirstPing) {
-                map.flyTo({ center: newPos, zoom: 16 });
-                isFirstPing = false;
-            }
+            animateFleetVan(vanId, startPosToUse, newPos, dynamicDuration); 
+            van.currentPos = newPos; 
         };
     </script>
 </Layout>
