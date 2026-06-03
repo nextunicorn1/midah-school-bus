@@ -1,0 +1,73 @@
+---
+// src/pages/onboard.astro
+---
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>WhatsApp Onboarding</title>
+</head>
+<body>
+  <button id="launch-signup">Connect WhatsApp</button>
+  <p id="status"></p>
+
+  <script is:inline>
+    window.fbAsyncInit = function () {
+      FB.init({
+        appId: '1738050040903335',
+        autoLogAppEvents: true,
+        xfbml: true,
+        version: 'v21.0'
+      });
+    };
+
+    (function (d, s, id) {
+      var js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) return;
+      js = d.createElement(s); js.id = id;
+      js.src = 'https://connect.facebook.net/en_US/sdk.js';
+      fjs.parentNode.insertBefore(js, fjs);
+    }(document, 'script', 'facebook-jssdk'));
+
+    function launchSignup() {
+      FB.login(function (response) {
+        console.log('FB.login response:', response);
+
+        if (response.authResponse && response.authResponse.code) {
+          var code = response.authResponse.code;
+          document.getElementById('status').textContent = 'Received code, sending to server...';
+
+          fetch('https://api.midahschoolbus.my/api/whatsapp/embedded-signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code })
+          })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            console.log('Backend response:', data);
+            document.getElementById('status').textContent = 'Success! WhatsApp connected.';
+          })
+          .catch(function(err) {
+            console.error(err);
+            document.getElementById('status').textContent = 'Error connecting. Check console.';
+          });
+
+        } else {
+          document.getElementById('status').textContent = 'Signup cancelled or failed.';
+          console.warn('No code in response:', response);
+        }
+      }, {
+        config_id: '27037065635958409',
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: {
+          featureType: 'whatsapp_business_app_onboarding',
+          sessionInfoVersion: '3'
+        }
+      });
+    }
+
+    document.getElementById('launch-signup').addEventListener('click', launchSignup);
+  </script>
+</body>
+</html>
