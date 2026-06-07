@@ -266,15 +266,15 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         const eventSource = new EventSource('https://api.midahschoolbus.my/api/vehicles/stream');
 
         eventSource.onopen = () => {
-        console.log("SSE OPEN");
+            console.log("SSE OPEN");
             if (statusText) {
                 statusText.textContent = "🟢 Live Connected";
                 statusText.className = "text-sm font-bold text-green-500 mb-6";
             }
         };
 
-        eventSource.onerror = () => {
-        console.error("SSE ERROR", err);
+        eventSource.onerror = (err) => {
+            console.error("SSE ERROR", err);
             if (statusText) {
                 statusText.textContent = "🔴 Connection Lost. Reconnecting...";
                 statusText.className = "text-sm font-bold text-red-500 mb-6";
@@ -282,12 +282,14 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         };
 
         eventSource.onmessage = (event) => {
-        console.log("SSE MESSAGE", event.data);
+            alert("SSE RECEIVED: " + event.data);
+
+            console.log("SSE MESSAGE", event.data);
+
             const vanData = JSON.parse(event.data);
             const vanId = vanData[0];
-            const newPos = [vanData[1], vanData[2]]; 
+            const newPos = [vanData[1], vanData[2]];
 
-            // Handle spontaneous tracking if a vehicle boots up mid-stream
             ensureVanLayerExists(vanId, newPos);
 
             const van = fleetTracking[vanId];
@@ -296,11 +298,11 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             van.lastPingTime = now;
 
             dynamicDuration = Math.max(2000, Math.min(dynamicDuration, 4000));
-            
+
             const startPosToUse = van.actualDisplayPos || van.currentPos;
-            
-            animateFleetVan(vanId, startPosToUse, newPos, dynamicDuration); 
-            van.currentPos = newPos; 
+
+            animateFleetVan(vanId, startPosToUse, newPos, dynamicDuration);
+            van.currentPos = newPos;
         };
     </script>
 </Layout>
