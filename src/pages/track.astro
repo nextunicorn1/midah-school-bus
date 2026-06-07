@@ -266,6 +266,7 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         const eventSource = new EventSource('https://api.midahschoolbus.my/api/vehicles/stream');
 
         eventSource.onopen = () => {
+        console.log("SSE OPEN");
             if (statusText) {
                 statusText.textContent = "🟢 Live Connected";
                 statusText.className = "text-sm font-bold text-green-500 mb-6";
@@ -273,6 +274,7 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         };
 
         eventSource.onerror = () => {
+        console.error("SSE ERROR", err);
             if (statusText) {
                 statusText.textContent = "🔴 Connection Lost. Reconnecting...";
                 statusText.className = "text-sm font-bold text-red-500 mb-6";
@@ -280,6 +282,7 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         };
 
         eventSource.onmessage = (event) => {
+        console.log("SSE MESSAGE", event.data);
             const vanData = JSON.parse(event.data);
             const vanId = vanData[0];
             const newPos = [vanData[1], vanData[2]]; 
