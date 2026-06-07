@@ -50,6 +50,10 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             dragRotate: false
         });
 
+        map.on('error', (e) => {
+            console.error('MAP ERROR', e);
+        });
+
         // ==========================================
         // Add the "Locate Me" Blue Dot
         // ==========================================
