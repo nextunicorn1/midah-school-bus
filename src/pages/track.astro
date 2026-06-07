@@ -286,15 +286,13 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         };
 
         eventSource.onmessage = (event) => {
-            alert("SSE RECEIVED: " + event.data);
-
-            console.log("SSE MESSAGE", event.data);
-
             const vanData = JSON.parse(event.data);
+            console.log("PARSED", vanData);
             const vanId = vanData[0];
             const newPos = [vanData[1], vanData[2]];
 
             ensureVanLayerExists(vanId, newPos);
+            console.log("LAYER OK");
 
             const van = fleetTracking[vanId];
             const now = performance.now();
@@ -304,7 +302,7 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             dynamicDuration = Math.max(2000, Math.min(dynamicDuration, 4000));
 
             const startPosToUse = van.actualDisplayPos || van.currentPos;
-
+            console.log("ANIMATING", vanId, newPos);
             animateFleetVan(vanId, startPosToUse, newPos, dynamicDuration);
             van.currentPos = newPos;
         };
