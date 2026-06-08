@@ -4,6 +4,8 @@ import Layout from '../layouts/Layout.astro';
 
 // 1. Grab the API key securely from your .env file
 const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
+const API_BASE = import.meta.env.PUBLIC_API_URL;
+const SSE_BASE = import.meta.env.PUBLIC_SSE_URL;
 ---
 
 <Layout title="Live Van Tracker | Midah School Bus">
@@ -228,7 +230,7 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
 
         async function loadInitialLocation() {
             try {
-                const res = await fetch('https://api.midahschoolbus.my/api/vehicles/locations');
+                const res = await fetch(`${API_BASE}/api/vehicles/locations`);
                 if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
                 const fleet = await res.json();
                 
@@ -291,7 +293,7 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         // NATIVE SSE LIVE STREAM (Fleet Aware)
         // ==========================================
         const statusText = document.getElementById('status'); 
-        const eventSource = new EventSource('https://api.midahschoolbus.my/api/vehicles/stream');
+        const eventSource = new EventSource(`${SSE_BASE}/api/vehicles/stream`);
 
         eventSource.onopen = () => {
             

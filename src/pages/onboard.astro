@@ -37,7 +37,9 @@
           var code = response.authResponse.code;
           document.getElementById('status').textContent = 'Received code, sending to server...';
 
-          fetch('https://api.midahschoolbus.my/api/whatsapp/embedded-signup', {
+          const API_BASE = import.meta.env.PUBLIC_API_URL;
+
+          fetch(`${API_BASE}/api/whatsapp/embedded-signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code: code })
