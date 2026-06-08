@@ -128,7 +128,13 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
 
             map.addSource(sourceId, {
                 type: 'geojson',
-                data: { type: 'Point', coordinates: initialPos }
+                data: {
+                    type: 'Feature',
+                    geometry: {
+                        type: 'Point',
+                        coordinates: initialPos
+                    }
+                }
             });
 
             map.addLayer({
@@ -181,24 +187,42 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             
             function step(timestamp) {
                 if (!startTimestamp) startTimestamp = timestamp;
-                const progress = Math.min((timestamp - startTimestamp) / durationMs, 1);
-                
-                const currentLng = startPos[0] + (endPos[0] - startPos[0]) * progress;
-                const currentLat = startPos[1] + (endPos[1] - startPos[1]) * progress;
-                
-                van.actualDisplayPos = [currentLng, currentLat]; 
-                
+
+                const progress = Math.min(
+                    (timestamp - startTimestamp) / durationMs,
+                    1
+                );
+
+                const currentLng =
+                    startPos[0] + (endPos[0] - startPos[0]) * progress;
+
+                const currentLat =
+                    startPos[1] + (endPos[1] - startPos[1]) * progress;
+
+                van.actualDisplayPos = [currentLng, currentLat];
+
+                console.log(
+                    "STEP",
+                    vanId,
+                    progress.toFixed(2),
+                    van.actualDisplayPos
+                );
+
                 if (map.getSource(sourceId)) {
                     map.getSource(sourceId).setData({
-                        type: 'Point',
-                        coordinates: van.actualDisplayPos
+                        type: 'Feature',
+                        geometry: {
+                            type: 'Point',
+                            coordinates: van.actualDisplayPos
+                        }
                     });
                 }
-                
+
                 if (progress < 1) {
                     van.animationId = requestAnimationFrame(step);
                 }
             }
+
             van.animationId = requestAnimationFrame(step);
         }
 
@@ -286,13 +310,13 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
         };
 
         eventSource.onmessage = (event) => {
+            console.log("SSE MESSAGE", event.data);
+
             const vanData = JSON.parse(event.data);
-            console.log("PARSED", vanData);
             const vanId = vanData[0];
             const newPos = [vanData[1], vanData[2]];
 
             ensureVanLayerExists(vanId, newPos);
-            console.log("LAYER OK");
 
             const van = fleetTracking[vanId];
             const now = performance.now();
@@ -302,8 +326,18 @@ const mapKey = import.meta.env.PUBLIC_MAPTILER_KEY;
             dynamicDuration = Math.max(2000, Math.min(dynamicDuration, 4000));
 
             const startPosToUse = van.actualDisplayPos || van.currentPos;
-            console.log("ANIMATING", vanId, newPos);
+
+            console.log(
+                "MOVE",
+                vanId,
+                "FROM",
+                startPosToUse,
+                "TO",
+                newPos
+            );
+
             animateFleetVan(vanId, startPosToUse, newPos, dynamicDuration);
+
             van.currentPos = newPos;
         };
     </script>
